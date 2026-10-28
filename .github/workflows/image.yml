@@ -36,7 +36,9 @@ jobs:
         run: |
           name="nibepi-$VERSION-$(date -u +%Y-%m-%d).img"
           sudo mv nibepi.img "$name"
-          sudo chown "$USER" "$name"
+          # Owner and group both: xz gives the .xz file the image's, and only
+          # root may set the group root.
+          sudo chown "$(id -u):$(id -g)" "$name"
           xz -T0 -9 "$name"
           sha256sum "$name.xz" > "$name.xz.sha256"
           echo "IMAGE=$name.xz" >> "$GITHUB_ENV"
