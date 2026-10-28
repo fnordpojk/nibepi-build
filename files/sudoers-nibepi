@@ -1,0 +1,3 @@
+# The dashboard's restart and shutdown buttons run "sudo reboot" and "sudo halt".
+# Nothing else may run as root.
+nibepi ALL=(root) NOPASSWD: /usr/sbin/reboot, /usr/sbin/halt

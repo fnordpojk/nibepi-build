@@ -1,0 +1,63 @@
+# NibePi for Raspberry Pi: Raspberry Pi OS Lite (64-bit) with NibePi
+# installed natively. Runs on the Zero 2 W, Pi 3, Pi 4 and Pi 5.
+
+FROM https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-10-06/2026-10-06-raspios-trixie-arm64-lite.img.xz
+TO nibepi.img
+PUMP 1500M
+
+# The NibePi version to install: a tag of nibepi-flow, which pins Node-RED and
+# the matching tags of node-red-contrib-nibepi and nibepi-backend. The
+# workflow sets it.
+ENV NIBEPI_VERSION v2.0.3
+
+# The boot partition must be mounted, or the UART settings below would land in
+# an empty directory on the root filesystem without any error.
+RUN mountpoint -q /boot/firmware
+
+# Node.js 24 from NodeSource, pinned above Debian's own nodejs (20.x).
+INSTALL 644 files/nodesource.asc /usr/share/keyrings/nodesource.asc
+INSTALL 644 files/nodesource.sources /etc/apt/sources.list.d/nodesource.sources
+INSTALL 644 files/nodejs.pref /etc/apt/preferences.d/nodejs
+RUN apt-get update
+RUN apt-get install -y nodejs git
+RUN apt-get clean
+
+RUN bash -c "echo nibepi > /etc/hostname"
+RUN sed -i 's/\braspberrypi\b/nibepi/g' /etc/hosts
+
+# NibePi runs as its own system user. dialout gives it the serial port.
+RUN useradd --system --create-home --home-dir /opt/nibepi --shell /usr/sbin/nologin --groups dialout nibepi
+RUN install -d -o nibepi -g nibepi -m 755 /etc/nibepi /opt/nibepi/data
+
+# Node-RED's directory is a clone of nibepi-flow at the release tag, the same
+# layout as the Docker setup. Its npm install brings Node-RED itself too.
+RUN sudo -u nibepi -H git -c advice.detachedHead=false clone --branch @@NIBEPI_VERSION@@ https://github.com/fnordpojk/nibepi-flow.git /opt/nibepi/data/nibepi-flow
+RUN sudo -u nibepi -H bash -c "cd /opt/nibepi/data/nibepi-flow && npm install --omit=dev --no-audit --no-fund && npm cache clean --force"
+
+# Fail the build if the serial port binding for arm64 does not load.
+RUN sudo -u nibepi -H node -e "require(require.resolve('@serialport/bindings-cpp', {paths: [require('fs').realpathSync('/opt/nibepi/data/nibepi-flow/node_modules/nibepi')]}))"
+
+# Node-RED's settings live outside its directory, where the nibepi user cannot
+# change them. The editor's password is made on each Pi's first boot, so no
+# two images share one.
+RUN install -d -m 755 /etc/nibepi-node-red
+INSTALL 644 files/node-red-settings.js /etc/nibepi-node-red/settings.js
+INSTALL 644 files/nibepi-editor-password.service /etc/systemd/system/nibepi-editor-password.service
+INSTALL 755 files/nibepi-editor-password /usr/local/sbin/nibepi-editor-password
+
+INSTALL 644 files/nibepi.service /etc/systemd/system/nibepi.service
+INSTALL 440 files/sudoers-nibepi /etc/sudoers.d/nibepi
+INSTALL 755 files/nibepi-update /usr/local/sbin/nibepi-update
+RUN visudo -cf /etc/sudoers.d/nibepi
+RUN systemctl enable nibepi.service
+
+# Serial port for the pump on GPIO 14/15. On the Zero 2 W, Pi 3 and Pi 4 the
+# full UART (ttyAMA0) is used by Bluetooth unless disable-bt frees it; the
+# Pi 5 enables its UART 0 on those pins with an overlay instead.
+RUN systemctl disable hciuart.service
+RUN bash -c "printf '\n[all]\nenable_uart=1\ndtoverlay=disable-bt\n\n[pi5]\ndtoverlay=uart0-pi5\n\n[all]\n' >> /boot/firmware/config.txt"
+# No login console on that port.
+RUN sed -i 's/console=serial0,[0-9]* //' /boot/firmware/cmdline.txt
+RUN bash -c "! grep -q 'console=serial0' /boot/firmware/cmdline.txt"
+
+SHRINK

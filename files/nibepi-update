@@ -1,0 +1,38 @@
+#!/bin/bash
+# Moves NibePi to a released version: the newest one, or the one given.
+#   sudo nibepi-update          newest release
+#   sudo nibepi-update v2.0.3   that release
+set -euo pipefail
+
+dir=/opt/nibepi/data/nibepi-flow
+backups=/opt/nibepi/backup
+as_nibepi() { sudo -u nibepi -H "$@"; }
+
+[ "$(id -u)" = 0 ] || { echo "Run it with sudo: sudo nibepi-update [version]" >&2; exit 1; }
+
+as_nibepi git -C "$dir" fetch --quiet --tags origin
+current=$(as_nibepi git -C "$dir" describe --tags --exact-match 2>/dev/null || echo unknown)
+target=${1:-$(as_nibepi git -C "$dir" tag -l 'v*' --sort=-v:refname | head -1)}
+
+as_nibepi git -C "$dir" rev-parse -q --verify "refs/tags/$target" >/dev/null \
+    || { echo "There is no NibePi release $target." >&2; exit 1; }
+[ "$target" != "$current" ] || { echo "NibePi is already at $current."; exit 0; }
+
+echo "Updating NibePi from $current to $target."
+systemctl stop nibepi
+# Whatever happens below, NibePi is running again afterwards.
+trap 'systemctl start nibepi' EXIT
+
+# Deploying in the Node-RED editor rewrites flows.json. The release replaces
+# it, so keep a copy of the edited one first.
+if ! as_nibepi git -C "$dir" diff --quiet -- flows.json; then
+    install -d -o nibepi -g nibepi "$backups"
+    copy="$backups/flows-$current-$(date +%Y%m%d-%H%M%S).json"
+    install -o nibepi -g nibepi -m 644 "$dir/flows.json" "$copy"
+    echo "flows.json had changes made in the Node-RED editor. They are saved in $copy."
+    as_nibepi git -C "$dir" checkout --quiet -- flows.json
+fi
+
+as_nibepi git -C "$dir" -c advice.detachedHead=false checkout --quiet "$target"
+as_nibepi bash -c "cd '$dir' && npm install --omit=dev --no-audit --no-fund && npm cache clean --force"
+echo "NibePi is now at $target."

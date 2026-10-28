@@ -1,0 +1,52 @@
+name: Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: NibePi version to install (a nibepi-flow tag, e.g. v2.0.2)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check the version
+        run: |
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Not a version tag: $VERSION"; exit 1; }
+          git ls-remote --exit-code --tags https://github.com/fnordpojk/nibepi-flow.git "refs/tags/$VERSION"
+          # The image runs the Node-RED that the release's package.json installs.
+          curl -fsSL "https://raw.githubusercontent.com/fnordpojk/nibepi-flow/$VERSION/package.json" \
+            | jq -e '.dependencies["node-red"]' \
+            || { echo "$VERSION does not depend on node-red, so it cannot be built into an image"; exit 1; }
+          sed -i "s/^ENV NIBEPI_VERSION .*/ENV NIBEPI_VERSION $VERSION/" nibepi.Pifile
+
+      - uses: Nature40/pimod@b3499e85c096637d78a35d7f4ad92a9e95e22160 # v0.9.3
+        with:
+          pifile: nibepi.Pifile
+
+      - name: Compress
+        run: |
+          name="nibepi-$VERSION-$(date -u +%Y-%m-%d).img"
+          sudo mv nibepi.img "$name"
+          sudo chown "$USER" "$name"
+          xz -T0 -9 "$name"
+          sha256sum "$name.xz" > "$name.xz.sha256"
+          echo "IMAGE=$name.xz" >> "$GITHUB_ENV"
+
+      # A draft, so nothing is public until the image has been tried on a Pi.
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "image-$VERSION-$(date -u +%Y-%m-%d)" --draft \
+            --title "NibePi $VERSION image" \
+            --notes "Raspberry Pi OS Lite (64-bit) with NibePi $VERSION." \
+            "$IMAGE" "$IMAGE.sha256"

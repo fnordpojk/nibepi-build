@@ -1,0 +1,19 @@
+[Unit]
+Description=NibePi
+Wants=network-online.target nibepi-editor-password.service
+After=network-online.target nibepi-editor-password.service
+
+[Service]
+User=nibepi
+Group=nibepi
+WorkingDirectory=/opt/nibepi/data/nibepi-flow
+# A Zero 2 W has 512 MB. Without a cap, Node lets its heap grow far past what
+# NibePi needs before collecting garbage.
+Environment=NODE_OPTIONS=--max-old-space-size=256
+ExecStart=/opt/nibepi/data/nibepi-flow/node_modules/.bin/node-red --userDir /opt/nibepi/data/nibepi-flow --settings /etc/nibepi-node-red/settings.js
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
