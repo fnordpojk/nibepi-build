@@ -18,8 +18,9 @@ Supported boards: Raspberry Pi Zero 2 W, 3, 4 and 5.
   release
 - a `nibepi` service, running as the `nibepi` user, which may only run
   `reboot` and `halt` as root (the dashboard's restart and shutdown buttons)
-- the serial port on GPIO 14/15 enabled for the pump, with Bluetooth turned
-  off on the Zero 2 W, Pi 3 and Pi 4, and no login console on that port
+- the serial port on GPIO 14/15 enabled for the pump, with no login console
+  on it, and Bluetooth turned off (on the Zero 2 W, Pi 3 and Pi 4 it would
+  otherwise take that port)
 - the host name `nibepi`
 - a password on the Node-RED editor, made on the first boot and different on
   every Pi
@@ -28,9 +29,14 @@ NibePi keeps its settings, graphs and VV-AI profile in `/etc/nibepi`.
 
 ## Installing
 
-Write the image to an SD card with Raspberry Pi Imager, then start the Pi.
-NibePi's dashboard is at `http://nibepi.local:1880/ui`, or at the Pi's
-address if your network does not resolve `.local` names.
+Write the image to an SD card with Raspberry Pi Imager: choose it under "Use
+custom", and in Imager's customization settings give the Pi a user and
+password, your Wi-Fi network if the Pi has no network cable, and SSH if you
+want to log in over the network. Set the host name to `nibepi`, or use the
+name you give it instead of `nibepi` below.
+
+Then start the Pi. NibePi's dashboard is at `http://nibepi.local:1880/ui`, or
+at the Pi's address if your network does not resolve `.local` names.
 
 ## The Node-RED editor
 
